@@ -1,0 +1,197 @@
+// PULSO — Modelo de datos (sección 5 del encargo)
+// SQLite en el sandbox; esquema portable a Postgres cambiando el provider.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  locale            String    @default("es")
+  ageConfirmedAt    DateTime?
+  consentAcceptedAt DateTime?
+  onboardingDoneAt  DateTime?
+  plan              String    @default("base")
+  dailyCallsUsed    Int       @default(0)
+  dailyCallsResetAt DateTime?
+  toneDefault       String    @default("casual")
+  lengthPref        String    @default("corta")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  women             Woman[]
+  threads           CoachThread[]
+  achievements      Achievement[]
+  auditLogs         AuditLog[]
+
+}
+
+// Código de acceso de un solo uso (OTP demo, sin envío de correo real)
+model LoginCode {
+  id         String   @id @default(cuid())
+  email      String
+  code       String
+  ageOk      Boolean  @default(false)
+  consentOk  Boolean  @default(false)
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  attempts   Int      @default(0)
+  createdAt  DateTime @default(now())
+  @@index([email, createdAt])
+}
+
+model Woman {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  age           Int?
+  city          String?
+  occupation    String?
+  photo         String?
+  metWhere      String?
+  archetype     String?
+  interestLevel Int       @default(50)
+  stage         String    @default("inicio")
+  phone         String?
+  channel       String?
+  status        String    @default("tibio")
+  notes         String?
+  createdAt     DateTime  @default(now())
+  archivedAt    DateTime?
+  messages      Message[]
+  analyses      Analysis[]
+  threads       CoachThread[]
+  suggestions   Suggestion[]
+  dates         DateEntry[]
+
+  @@index([userId, archivedAt])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  womanId    String
+  woman      Woman    @relation(fields: [womanId], references: [id], onDelete: Cascade)
+  sender     String // me | her
+  body       String
+  sentAt     DateTime?
+  source     String   @default("manual") // manual | screenshot | txt_import
+  confidence Float?
+  createdAt  DateTime @default(now())
+
+  @@index([womanId, sentAt])
+}
+
+model Analysis {
+  id        String   @id @default(cuid())
+  womanId   String
+  woman     Woman    @relation(fields: [womanId], references: [id], onDelete: Cascade)
+  messageId String?
+  kind      String // radiografia | perfil | profundo
+  metrics   String?
+  summary   String?
+  model     String?
+  createdAt DateTime @default(now())
+
+  @@index([womanId, kind, createdAt])
+}
+
+model CoachThread {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  womanId   String?
+  woman     Woman?   @relation(fields: [womanId], references: [id], onDelete: Cascade)
+  protocol  String   @default("none") // none | reactivar | invitar | entender | diagnostico
+  step      Int      @default(0)
+  state     String? // JSON con las respuestas acumuladas del protocolo
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  turns     CoachTurn[]
+
+  @@index([userId, womanId])
+}
+
+model CoachTurn {
+  id         String   @id @default(cuid())
+  threadId   String
+  thread     CoachThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role       String // user | assistant
+  content    String
+  blocks     String? // JSON de bloques parseados (respuestas del asistente)
+  promptSent String?
+  model      String?
+  tokensIn   Int?
+  tokensOut  Int?
+  createdAt  DateTime @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+model Suggestion {
+  id          String    @id @default(cuid())
+  womanId     String
+  woman       Woman     @relation(fields: [womanId], references: [id], onDelete: Cascade)
+  messageId   String?
+  options     String // JSON array de opciones
+  chosenIndex Int?
+  chosenText  String?
+  sentAt      DateTime?
+  outcome     String? // sin_respuesta | respondio | cita | descartado
+  createdAt   DateTime  @default(now())
+
+  @@index([womanId])
+}
+
+model DateEntry {
+  id          String    @id @default(cuid())
+  womanId     String
+  woman       Woman     @relation(fields: [womanId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime
+  place       String?
+  status      String    @default("agendada") // agendada | hecha | cancelada | no_show
+  preBriefing String?
+  debriefing  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([womanId, scheduledAt])
+}
+
+model Achievement {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code         String
+  title        String
+  evidenceText String?
+  verifiedByAi Boolean   @default(false)
+  claimedAt    DateTime?
+  verifiedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([userId, code])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  meta      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Evidencia mínima de borrados reales (queda tras eliminar la cuenta)
+model DeletionLog {
+  id        String   @id @default(cuid())
+  emailHash String
+  reason    String
+  at        DateTime @default(now())
+}
