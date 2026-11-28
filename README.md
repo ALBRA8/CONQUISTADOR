@@ -1,5 +1,11 @@
 # PULSO — Coach de conversación
 
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
+![React 19](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
+![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Prisma 6](https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma&logoColor=white)
+![Tailwind 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+
 Aplicación web de coaching de conversación asistida por IA. Producto propio,
 construido desde cero con identidad propia: no copia apariencia, textos ni
 recursos de ningún producto de referencia. Se inspira solo en FUNCIONES.
@@ -55,6 +61,54 @@ un endpoint compatible). Para cambiar proveedor:
 2. Pon `OPENAI_API_KEY` (y opcionalmente `OPENAI_BASE_URL`, `OPENAI_MODEL`).
 3. Para añadir un tercero: crea una función `callX(req)` en `provider.ts`,
    únela al switch y documenta la variable. Nada más depende de la marca.
+
+## Despliegue en Vercel
+
+La app se despliega en Vercel sin cambiar código de la app, con dos ajustes:
+
+**1. Base de datos: SQLite no persiste en Vercel.** El filesystem de las
+funciones serverless es efímero: la base `file:./db/custom.db` se vaciaría en
+cada despliegue. Para producción, migra Prisma a una base gestionada:
+
+1. Crea una base Postgres (Neon, Supabase o Vercel Postgres — todos con plan
+   gratuito).
+2. En `prisma/schema.prisma` cambia `provider = "sqlite"` por
+   `provider = "postgresql"`.
+3. Usa la cadena de conexión del proveedor como `DATABASE_URL`.
+4. Crea las tablas una sola vez, desde tu máquina:
+   `DATABASE_URL="<cadena>" npx prisma db push`.
+
+**2. Proveedor de IA en producción.** En Vercel usa
+`AI_PROVIDER=openai` con `OPENAI_API_KEY` propia (cualquier endpoint
+compatible con OpenAI sirve: OpenAI, OpenRouter, Groq...). El adaptador
+`zai` está pensado para el entorno del sandbox.
+
+**Pasos en Vercel:**
+
+1. Repo en GitHub: `github.com/ALBRA8/CONQUISTADOR`.
+2. Vercel → *Add New... → Project* → importa el repo.
+3. En *Settings → Build & Output Settings*, pon como *Build Command*
+   `next build` (el paso extra de `cp` del script `build` local es solo para
+   autoalojamiento con `output: "standalone"`).
+4. En *Environment Variables*, añade:
+
+   | Variable | Valor |
+   | --- | --- |
+   | `DATABASE_URL` | cadena de conexión Postgres |
+   | `AUTH_SECRET` | secreto largo y aleatorio (obligatorio en producción) |
+   | `AI_PROVIDER` | `openai` |
+   | `OPENAI_API_KEY` | tu clave del proveedor de IA |
+   | `OPENAI_BASE_URL` | solo si el endpoint no es el estándar de OpenAI |
+   | `OPENAI_MODEL` | opcional; por defecto `gpt-4o-mini` |
+   | `DAILY_AI_LIMIT` | opcional; por defecto `40` |
+
+5. Deploy. El cliente Prisma se genera en la instalación
+   (`postinstall: prisma generate`).
+
+**Correo del OTP:** en producción el código de acceso se muestra en pantalla
+(modo demo, ver "Autenticación"). Antes de abrir a usuarios reales, conecta
+el envío real por SMTP/SMS en `POST /api/auth/request-code`; el resto del
+flujo de sesión no cambia.
 
 ## Autenticación (decisión documentada)
 

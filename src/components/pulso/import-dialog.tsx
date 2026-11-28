@@ -18,6 +18,9 @@ import { AlertTriangle, Check, FileText, Image as ImageIcon, PenLine } from "luc
 import { cn } from "@/lib/utils";
 
 type Draft = { sender: "me" | "her"; body: string; sentAt: string | null; hora?: string | null; confidence?: number | null };
+// Borrador del .txt: conserva el nombre crudo del autor hasta que el usuario
+// dice quién es; el emisor final (me/her) se decide al confirmar.
+type TxtDraft = { author: string; body: string; sentAt: string | null };
 
 // Importación en tres caminos (sección 6.6): capturas · .txt · manual
 export function ImportDialog({
@@ -200,7 +203,7 @@ function TxtTab({ womanId, onSaved }: { womanId: string; onSaved: () => void }) 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [authors, setAuthors] = useState<string[]>([]);
-  const [parsed, setParsed] = useState<Draft[] | null>(null);
+  const [parsed, setParsed] = useState<TxtDraft[] | null>(null);
   const [meAuthor, setMeAuthor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,7 +216,11 @@ function TxtTab({ womanId, onSaved }: { womanId: string; onSaved: () => void }) 
         { method: "POST", body: JSON.stringify({ text }) }
       );
       setAuthors(res.authors);
-      setParsed(res.messages.map((m) => ({ sender: m.sender === "me" ? "me" : "her", body: m.body, sentAt: m.sentAt })));
+      // OJO: el parser devuelve el NOMBRE del autor en "sender". No convertir
+      // a me/her aquí: se decide con meAuthor al confirmar (antes todos caían
+      // en "her" y se importaban mal).
+      setParsed(res.messages.map((m) => ({ author: m.sender, body: m.body, sentAt: m.sentAt })));
+      setMeAuthor(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -227,9 +234,15 @@ function TxtTab({ womanId, onSaved }: { womanId: string; onSaved: () => void }) 
     try {
       const authorMap: Record<string, string> = {};
       for (const a of authors) authorMap[a] = a === meAuthor ? "me" : "her";
+      const messages = parsed.map((d) => ({
+        sender: (d.author === meAuthor ? "me" : "her") as "me" | "her",
+        author: d.author,
+        body: d.body,
+        sentAt: d.sentAt,
+      }));
       await api("/api/import/save", {
         method: "POST",
-        body: JSON.stringify({ womanId, source: "txt_import", messages: parsed, authorMap }),
+        body: JSON.stringify({ womanId, source: "txt_import", messages, authorMap }),
       });
       toast({ title: "Conversación guardada", description: `${parsed.length} mensajes importados.` });
       setParsed(null);
@@ -247,7 +260,9 @@ function TxtTab({ womanId, onSaved }: { womanId: string; onSaved: () => void }) 
     return (
       <div className="space-y-4 pt-4">
         <div className="space-y-1.5">
-          <Label>¿Quién eres tú en el archivo?</Label>
+          <Label>
+            ¿Quién eres tú en el archivo? <span className="text-amber-300">(elige tu nombre para activar el guardado)</span>
+          </Label>
           <div className="flex flex-wrap gap-2">
             {authors.map((a) => (
               <button
@@ -269,18 +284,33 @@ function TxtTab({ womanId, onSaved }: { womanId: string; onSaved: () => void }) 
               <span className="w-12 shrink-0 text-xs font-semibold text-muted-foreground">
                 {d.sentAt ? new Date(d.sentAt).toLocaleString("es", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) : "sin hora"}
               </span>
-              <span className="min-w-0 whitespace-pre-wrap break-words">
-                {authors.find((a) => a === meAuthor) && d.sender === "me" ? "" : ""}
-                {d.body}
+              <span
+                className={cn(
+                  "w-12 shrink-0 truncate text-[10px] font-bold",
+                  !meAuthor
+                    ? "text-muted-foreground"
+                    : d.author === meAuthor
+                      ? "text-amber-300"
+                      : "text-muted-foreground"
+                )}
+                title={d.author}
+              >
+                {!meAuthor ? d.author : d.author === meAuthor ? "YO" : "ELLA"}
               </span>
+              <span className="min-w-0 whitespace-pre-wrap break-words">{d.body}</span>
             </div>
           ))}
         </div>
-        <div className="flex justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Button variant="ghost" onClick={() => setParsed(null)}>Volver</Button>
-          <Button onClick={confirm} disabled={busy || !meAuthor}>
-            <Check className="mr-1.5 h-4 w-4" /> Guardar {parsed.length} mensajes
-          </Button>
+          <div className="flex items-center gap-3">
+            {!meAuthor && (
+              <p className="text-xs text-muted-foreground">Primero toca tu nombre arriba para poder guardar.</p>
+            )}
+            <Button onClick={confirm} disabled={busy || !meAuthor}>
+              <Check className="mr-1.5 h-4 w-4" /> Guardar {parsed.length} mensajes
+            </Button>
+          </div>
         </div>
       </div>
     );

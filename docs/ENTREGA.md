@@ -102,3 +102,29 @@ cita agendada) y respuestas de IA reales del proveedor por defecto.
 - La zona horaria por defecto es America/Bogota (configurable por llamada).
 - La puntuación del simulador y las probabilidades de las opciones son
   estimaciones de la IA y están etiquetadas como tales.
+
+## Correcciones post-entrega (reportadas por el usuario)
+
+**Síntoma:** "Subí un .txt y no pasa nada" al pulsar "Guardar N mensajes".
+
+1. **UI — botón deshabilitado sin explicación.** "Guardar N mensajes" exige
+   haber elegido "¿Quién eres tú en el archivo?" y no había aviso ninguno.
+   Ahora la pregunta indica "(elige tu nombre para activar el guardado)", el
+   botón muestra el aviso "Primero toca tu nombre arriba para poder guardar"
+   y el preview marca cada fila con el nombre del autor; tras elegirte, con
+   YO (ámbar) / ELLA. (`import-dialog.tsx`)
+2. **CRÍTICO — emisores mal asignados.** El parser devuelve el NOMBRE del
+   autor, pero el cliente convertía todo lo que no fuera literalmente "me" a
+   "her": al guardar, TODOS los mensajes quedaban como de ella y el coach
+   analizaba mal. Ahora el cliente conserva el nombre crudo y decide
+   me/her según el nombre elegido; el servidor además resuelve por
+   `authorMap` cuando el emisor llega con nombre en vez de me/her.
+   (`import-dialog.tsx`, `api/import/save`)
+3. **Horario colombiano "p. m."/"a. m.".** El parser ignoraba los sufijos
+   "p. m."/"a. m." del export es-CO: "3:37 p. m." se guardaba como 03:37.
+   Ahora se normalizan a 24 h (15:37). Esto importa porque Pulso sugiere
+   hora de envío. (`lib/import/whatsappTxt.ts`)
+
+Verificación: `scripts/test-import-fix.sh` (API) + flujo de navegador
+(login → ficha → importar .txt → elegir autor → guardar → historial con
+YO/ELLA y horas correctas). Dedupe y línea multilínea verificados.

@@ -19,25 +19,45 @@ function twoDigitYear(y: number): number {
 
 // Intenta parsear una fecha de cabecera de WhatsApp
 function parseHeaderDate(datePart: string): Date | null {
+  // Export es-CO usa sufijos con puntos: "3:37 p. m." / "2:31 a. m.".
+  // Se extraen primero (con puntos y espacios) y se ajusta la hora al final.
+  const trimmed = datePart.trim();
+  const apMatch = /(?:\s+|^)(a|p)\.?\s*m\.?\s*$/i.exec(trimmed);
+  let pm: boolean | null = null;
+  let rest = trimmed;
+  if (apMatch) {
+    pm = apMatch[1].toLowerCase() === "p";
+    rest = trimmed.slice(0, apMatch.index).trim();
+  }
+
   // Formatos: DD/MM/YYYY, HH:MM | DD/MM/YY, HH:MM | D MMM, YYYY HH:MM | YYYY-MM-DD, HH:MM
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})[, ]+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(datePart);
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})[, ]+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(rest);
   if (iso) {
     return new Date(+iso[1], +iso[2] - 1, +iso[3], +iso[4], +iso[5], iso[6] ? +iso[6] : 0);
   }
-  const dmy = /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})[,]?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(am|pm|AM|PM))?/.exec(datePart);
+  const dmy = /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})[,]?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(rest);
   if (dmy) {
     let h = +dmy[4];
-    const ap = dmy[7]?.toLowerCase();
-    if (ap === "pm" && h < 12) h += 12;
-    if (ap === "am" && h === 12) h = 0;
+    if (pm === null) {
+      // Sufijo sin puntos ("pm"/"am") que no se extrajo antes
+      const apRaw = /\s*(am|pm|AM|PM)\s*$/.exec(datePart)?.[1];
+      if (apRaw?.toLowerCase() === "pm") h += h < 12 ? 12 : 0;
+      else if (apRaw?.toLowerCase() === "am" && h === 12) h = 0;
+    } else {
+      if (pm && h < 12) h += 12;
+      if (!pm && h === 12) h = 0;
+    }
     const y = twoDigitYear(+dmy[3]);
     return new Date(y, +dmy[2] - 1, +dmy[1], h, +dmy[5], dmy[6] ? +dmy[6] : 0);
   }
-  const textual = /^(\d{1,2})\s+([a-zA-Záéíóú]{3,4})\.?,?\s+(\d{4})[, ]+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(datePart);
+  const textual = /^(\d{1,2})\s+([a-zA-Záéíóú]{3,4})\.?,?\s+(\d{4})[, ]+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(rest);
   if (textual) {
     const mon = MONTHS[textual[2].toLowerCase().slice(0, 3)];
     if (mon !== undefined) {
-      return new Date(+textual[3], mon, +textual[1], +textual[4], +textual[5], textual[6] ? +textual[6] : 0);
+      let h = +textual[4];
+      if (pm && h < 12) h += 12;
+      if (pm === false && h === 12) h = 0;
+      return new Date(+textual[3], mon, +textual[1], h, +textual[5], textual[6] ? +textual[6] : 0);
     }
   }
   return null;

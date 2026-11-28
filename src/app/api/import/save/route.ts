@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
         womanId?: string;
         source?: string;
         authorMap?: Record<string, string>; // autor del archivo -> "me" | "her"
-        messages?: Array<{ sender?: string; body?: string; sentAt?: string | null; hora?: string | null; confidence?: number }>;
+        messages?: Array<{ sender?: string; author?: string; body?: string; sentAt?: string | null; hora?: string | null; confidence?: number }>;
       }
     | null;
   if (!body?.womanId || !Array.isArray(body.messages)) {
@@ -37,9 +37,15 @@ export async function POST(req: NextRequest) {
   }> = [];
 
   for (const m of body.messages) {
+    // 1) sender ya viene decidido ("me"/"her"), como en capturas o .txt confirmado.
     let sender = m.sender === "her" ? "her" : m.sender === "me" ? "me" : null;
-    if (!sender && body.authorMap && typeof (m as { author?: string }).author === "string") {
-      sender = body.authorMap[(m as { author?: string }).author as string] === "me" ? "me" : "her";
+    // 2) Si no, resolver por authorMap: el campo "author" o el propio sender
+    //    puede traer el NOMBRE del autor del archivo ("Johan Bravo"). Nunca
+    //    dejar caer un mensaje propio en "her" por defecto si hay mapa.
+    if (!sender && body.authorMap) {
+      const authorName = (typeof m.author === "string" && m.author.trim()) || (m.sender || "").trim();
+      const mapped = authorName ? body.authorMap[authorName] : undefined;
+      if (mapped === "me" || mapped === "her") sender = mapped;
     }
     if (!sender) sender = "her";
     const text = (m.body || "").trim().slice(0, 4000);
